@@ -1,0 +1,25 @@
+Build and test Handoff, a USDC job-escrow app for Arc.
+
+Contract Handoff:
+- Constructor takes the USDC address. On chain id 5042 and 5042002 it must be exactly 0x3600000000000000000000000000000000000000. Elsewhere (unit tests) any token whose decimals() is 6 is allowed.
+- Reject native value in receive(). Arc native USDC is 18 decimals; this app only moves the 6-decimal ERC-20 interface.
+- createAndFund(payee, releaser, arbitrator, amount, deadline, reviewWindow, title) pulls USDC with transferFrom, checks the contract balance increased by amount, then stores the job.
+- Payee cannot be the client or the zero address. Releaser cannot be the payee (zero means “client only”). Arbitrator cannot be the client or the payee (zero disables disputes).
+- Review window is 60 seconds to 90 days. Deadline is 0 or a future timestamp within 365 days. Title 1–80 bytes. Proof 1–200 bytes.
+- States: Funded, Delivered, Disputed, Released, Refunded.
+- deliver(id, proof) is payee-only, before the deadline.
+- release(id) pays the payee. The client can release when Delivered or Disputed. A named releaser can release only when Delivered.
+- claim(id) is the payee, only when Delivered and block.timestamp >= deliveredAt + reviewWindow.
+- refund(id) is the client, only while Funded.
+- dispute(id) is the client, only when an arbitrator is set, the job is Delivered, and the review window has not ended.
+- acceptRefund(id) is the payee during a dispute.
+- resolve(id, toPayee) is the arbitrator during a dispute.
+- At the exact end of the review window, dispute reverts and claim succeeds. Those two paths must not overlap.
+- Use a reentrancy guard. Set status before sending USDC out. Pull USDC in before the job is recorded, so a callback cannot refund a job that is not funded yet.
+- No owner, no pause, no admin withdraw. Do not use SELFDESTRUCT. Never transfer to address(0).
+
+Write Forge tests for the paths above, including a token that transfers one unit short (must revert) and a token that calls refund on another job during transferFrom (must not steal).
+
+Then build a small web app that creates a ticket, shows it, and calls deliver, release, claim, refund, dispute, acceptRefund, and resolve. Deploy the contract to Arc testnet. USDC is 6 decimals on the ERC-20 interface. Arc drops transactions with maxFeePerGas under 20 gwei, so set the fee at or above that floor.
+
+Do not deploy to Arc mainnet.
